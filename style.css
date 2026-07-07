@@ -18,8 +18,20 @@ body {
   line-height: 1.6;
 }
 .wrap { max-width: 880px; margin: 0 auto; padding: 24px 16px 60px; }
+header .logo { max-width: 240px; height: auto; display: block; margin-bottom: 4px; }
 header h1 { margin: 8px 0 4px; font-size: 26px; }
 .sub { color: var(--muted); margin-top: 0; }
+.links { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 6px; }
+.links a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+}
+.links a:hover { border-color: var(--accent); background: #eef4ff; }
 
 .panel {
   background: var(--card);

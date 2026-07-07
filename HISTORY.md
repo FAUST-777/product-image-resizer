@@ -51,6 +51,12 @@
 | 大小上限 | 1 MB | 300KB / 500KB / 2MB / 不限 |
 | 格式 | JPG | WebP / PNG |
 
+## 🎨 品牌化（2026-07-07 同日）
+
+上線後隨即確認這是給 **OrderPally** 店家用的工具：
+- 標題改「OrderPally 專用 圖片轉換器」+ 掛官方 logo（原檔 2000px，`sips` 縮到 600px/24KB 收進 `assets/`）
+- 頁首加兩個推薦連結：官方網站 orderpally.com.tw、系統後台 store.orderpally.com/next-gen/admin-login
+
 ## 🚧 未完成 / 未來想做
 
 - [ ] 拿到平台正式圖片規格後鎖定預設值（等用戶提供）
