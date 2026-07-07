@@ -8,6 +8,7 @@
 
   var els = {
     sizePreset: document.getElementById("sizePreset"),
+    fitModeWrap: document.getElementById("fitModeWrap"),
     customSizeWrap: document.getElementById("customSizeWrap"),
     customW: document.getElementById("customW"),
     customH: document.getElementById("customH"),
@@ -30,17 +31,17 @@
 
   // ---------- 設定 ----------
   function currentSettings() {
-    var w, h;
+    var w = 0, h = 0; // 0 = 維持原尺寸（只壓縮檔案）
     if (els.sizePreset.value === "custom") {
       w = clampInt(els.customW.value, 50, 8000, 1000);
       h = clampInt(els.customH.value, 50, 8000, 1000);
-    } else {
+    } else if (els.sizePreset.value !== "original") {
       w = h = parseInt(els.sizePreset.value, 10);
     }
     return {
       width: w,
       height: h,
-      fitMode: els.fitMode.value,          // 'pad' | 'fit'
+      fitMode: w ? els.fitMode.value : "fit", // 原尺寸模式下無補邊需求
       bgColor: els.bgColor.value,
       maxBytes: parseInt(els.maxKB.value, 10) * 1024, // 0 = 不限制
       format: els.format.value,
@@ -53,12 +54,15 @@
     return Math.min(max, Math.max(min, n));
   }
 
-  els.sizePreset.addEventListener("change", function () {
-    els.customSizeWrap.classList.toggle("hidden", els.sizePreset.value !== "custom");
-  });
-  els.fitMode.addEventListener("change", function () {
-    els.bgWrap.classList.toggle("hidden", els.fitMode.value !== "pad");
-  });
+  function refreshSettingsUI() {
+    var v = els.sizePreset.value;
+    els.customSizeWrap.classList.toggle("hidden", v !== "custom");
+    els.fitModeWrap.classList.toggle("hidden", v === "original");
+    els.bgWrap.classList.toggle("hidden", v === "original" || els.fitMode.value !== "pad");
+  }
+  els.sizePreset.addEventListener("change", refreshSettingsUI);
+  els.fitMode.addEventListener("change", refreshSettingsUI);
+  refreshSettingsUI();
 
   // ---------- 選檔 / 拖放 ----------
   els.dropzone.addEventListener("click", function () { els.fileInput.click(); });
@@ -149,10 +153,11 @@
     });
   }
 
-  /** 等比縮放到目標框內；pad 模式輸出固定尺寸並補底色。大幅縮小時分段減半保畫質。 */
+  /** 等比縮放到目標框內；pad 模式輸出固定尺寸並補底色。大幅縮小時分段減半保畫質。
+   *  s.width=0 表示維持原尺寸（不縮放，只交給後段壓縮）。 */
   function renderToCanvas(src, s) {
     var sw = src.width, sh = src.height;
-    var scale = Math.min(s.width / sw, s.height / sh, 1); // 只縮小不放大
+    var scale = s.width ? Math.min(s.width / sw, s.height / sh, 1) : 1; // 只縮小不放大
     var dw = Math.max(1, Math.round(sw * scale));
     var dh = Math.max(1, Math.round(sh * scale));
 
@@ -202,20 +207,39 @@
       });
     }
     var qualities = [0.92, 0.85, 0.78, 0.7, 0.62, 0.55, 0.48, 0.4];
-    var i = 0;
-    function tryNext(lastBlob) {
-      if (i >= qualities.length) {
-        if (lastBlob) throw new Error("已壓到最低品質仍超過上限（" + fmtSize(lastBlob.size) + "），請調低目標尺寸");
-        throw new Error("轉檔失敗");
+
+    function tryQualities(cnv) {
+      var i = 0;
+      function next(lastBlob) {
+        if (i >= qualities.length) return Promise.resolve({ blob: lastBlob, over: true });
+        var q = qualities[i++];
+        return toBlob(cnv, s.format, q).then(function (blob) {
+          if (!blob) throw new Error("瀏覽器不支援此輸出格式");
+          if (blob.size <= s.maxBytes) return { blob: blob, over: false };
+          return next(blob);
+        });
       }
-      var q = qualities[i++];
-      return toBlob(canvas, s.format, q).then(function (blob) {
-        if (!blob) throw new Error("瀏覽器不支援此輸出格式");
-        if (blob.size <= s.maxBytes) return blob;
-        return tryNext(blob);
+      return next(null);
+    }
+
+    // 保險機制：極大圖壓到最低品質仍超標時，尺寸每次縮 80% 再試（規格尺寸不限，縮尺寸可接受）
+    function attempt(cnv, depth) {
+      return tryQualities(cnv).then(function (r) {
+        if (!r.over) return r.blob;
+        if (depth >= 6 || Math.min(cnv.width, cnv.height) <= 300) {
+          throw new Error("已壓到極限仍超過上限（" + fmtSize(r.blob.size) + "）");
+        }
+        var w = Math.round(cnv.width * 0.8);
+        var h = Math.round(cnv.height * 0.8);
+        var smaller = makeCanvas(w, h);
+        var ctx = smaller.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(cnv, 0, 0, w, h);
+        return attempt(smaller, depth + 1);
       });
     }
-    return tryNext(null);
+    return attempt(canvas, 0);
   }
 
   function toBlob(canvas, type, quality) {
@@ -227,8 +251,8 @@
   function outputName(original, s) {
     var base = original.replace(/\.[^.]+$/, "");
     var ext = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[s.format] || "jpg";
-    var dim = s.fitMode === "pad" ? s.width + "x" + s.height : "resized";
-    return base + "_" + dim + "." + ext;
+    var suffix = !s.width ? "compressed" : (s.fitMode === "pad" ? s.width + "x" + s.height : "resized");
+    return base + "_" + suffix + "." + ext;
   }
 
   // ---------- 畫面 ----------

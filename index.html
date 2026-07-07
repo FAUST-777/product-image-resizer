@@ -22,11 +22,13 @@
 
   <section class="panel" id="settings">
     <h2>① 輸出規格</h2>
+    <p class="hint">✅ 預設已照 OrderPally 官方規格設定：<strong>檔案 ≤ 2MB、尺寸不限</strong>，直接跳到 ② 拖圖即可。</p>
     <div class="grid">
       <label>目標尺寸（px）
         <select id="sizePreset">
+          <option value="original" selected>維持原尺寸（只壓縮檔案）</option>
           <option value="800">800 × 800</option>
-          <option value="1000" selected>1000 × 1000</option>
+          <option value="1000">1000 × 1000</option>
           <option value="1200">1200 × 1200</option>
           <option value="custom">自訂…</option>
         </select>
@@ -37,13 +39,13 @@
           <input type="number" id="customH" value="1000" min="50" max="8000">
         </span>
       </label>
-      <label>縮放方式
+      <label id="fitModeWrap" class="hidden">縮放方式
         <select id="fitMode">
           <option value="pad" selected>等比縮放＋補底色（輸出固定尺寸）</option>
           <option value="fit">等比縮放至長邊（輸出比例不變）</option>
         </select>
       </label>
-      <label id="bgWrap">補邊底色
+      <label id="bgWrap" class="hidden">補邊底色
         <span class="inline">
           <input type="color" id="bgColor" value="#ffffff">
           <span class="hint">一般商品圖用白色</span>
@@ -53,8 +55,8 @@
         <select id="maxKB">
           <option value="300">300 KB</option>
           <option value="500">500 KB</option>
-          <option value="1024" selected>1 MB</option>
-          <option value="2048">2 MB</option>
+          <option value="1024">1 MB</option>
+          <option value="2048" selected>2 MB（OrderPally 規格）</option>
           <option value="0">不限制</option>
         </select>
       </label>
