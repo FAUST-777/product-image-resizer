@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="description" content="OrderPally 專用商品圖片批次轉換工具：等比縮放不變形、自動壓縮到檔案大小上限、批次 ZIP 下載。照片全程在瀏覽器處理不上傳，免費使用。">
 <title>OrderPally 專用圖片轉換器｜商品圖批次縮圖壓縮工具</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <main class="wrap">
   <header>
     <img src="assets/orderpally-logo.png" alt="OrderPally" class="logo">
     <h1>OrderPally 專用 圖片轉換器</h1>
-    <p class="sub">把整批照片一次轉成符合系統規格的商品圖——等比縮放不變形、自動壓到大小上限。<br>
+    <p class="sub">把整批照片丟進來：<strong>超過 2MB 的自動壓縮到 2MB 以內</strong>（不改變比例），沒超過的原封不動，一起打包還給你。<br>
     照片只在你的瀏覽器裡處理，<strong>不會上傳到任何伺服器</strong>，安心使用。</p>
     <nav class="links">
       <a href="https://orderpally.com.tw" target="_blank" rel="noopener">🌐 OrderPally 官方網站</a>
@@ -20,67 +20,17 @@
     </nav>
   </header>
 
-  <section class="panel" id="settings">
-    <h2>① 輸出規格</h2>
-    <p class="hint">✅ 預設已照 OrderPally 官方規格設定：<strong>檔案 ≤ 2MB、尺寸不限</strong>，直接跳到 ② 拖圖即可。</p>
-    <div class="grid">
-      <label>目標尺寸（px）
-        <select id="sizePreset">
-          <option value="original" selected>維持原尺寸（只壓縮檔案）</option>
-          <option value="800">800 × 800</option>
-          <option value="1000">1000 × 1000</option>
-          <option value="1200">1200 × 1200</option>
-          <option value="custom">自訂…</option>
-        </select>
-      </label>
-      <label id="customSizeWrap" class="hidden">自訂寬 × 高
-        <span class="inline">
-          <input type="number" id="customW" value="1000" min="50" max="8000"> ×
-          <input type="number" id="customH" value="1000" min="50" max="8000">
-        </span>
-      </label>
-      <label id="fitModeWrap" class="hidden">縮放方式
-        <select id="fitMode">
-          <option value="pad" selected>等比縮放＋補底色（輸出固定尺寸）</option>
-          <option value="fit">等比縮放至長邊（輸出比例不變）</option>
-        </select>
-      </label>
-      <label id="bgWrap" class="hidden">補邊底色
-        <span class="inline">
-          <input type="color" id="bgColor" value="#ffffff">
-          <span class="hint">一般商品圖用白色</span>
-        </span>
-      </label>
-      <label>檔案大小上限
-        <select id="maxKB">
-          <option value="300">300 KB</option>
-          <option value="500">500 KB</option>
-          <option value="1024">1 MB</option>
-          <option value="2048" selected>2 MB（OrderPally 規格）</option>
-          <option value="0">不限制</option>
-        </select>
-      </label>
-      <label>輸出格式
-        <select id="format">
-          <option value="image/jpeg" selected>JPG（推薦，檔案小）</option>
-          <option value="image/webp">WebP（更小，較新系統）</option>
-          <option value="image/png">PNG（無壓縮上限控制）</option>
-        </select>
-      </label>
-    </div>
-  </section>
-
   <section class="panel">
-    <h2>② 選擇照片</h2>
+    <h2>① 選擇照片</h2>
     <div id="dropzone" tabindex="0">
       <p><strong>把照片拖到這裡</strong>，或點擊選擇檔案</p>
-      <p class="hint">支援 JPG / PNG / WebP / HEIC(部分瀏覽器)，一次可選多張</p>
+      <p class="hint">支援 JPG / PNG / WebP，一次可選多張；符合 OrderPally 規格（≤ 2MB）的會原檔保留</p>
       <input type="file" id="fileInput" accept="image/*" multiple hidden>
     </div>
   </section>
 
   <section class="panel hidden" id="resultPanel">
-    <h2>③ 轉檔結果</h2>
+    <h2>② 處理結果</h2>
     <div class="toolbar">
       <button id="downloadAll" class="primary" disabled>⬇️ 全部下載（ZIP）</button>
       <button id="clearAll">🗑️ 清空重來</button>
@@ -94,6 +44,6 @@
   </footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>

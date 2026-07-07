@@ -1,22 +1,18 @@
 /**
- * 商品圖片批次轉檔工具 — 全程在瀏覽器本機處理，不上傳任何檔案。
+ * OrderPally 專用圖片轉換器 — 全程在瀏覽器本機處理，不上傳任何檔案。
  *
- * 流程：讀檔 → 等比縮放（分段縮小保畫質）→ 補底色(可選) → 迭代降品質壓到大小上限 → 單張/整批 ZIP 下載
+ * 規則（OrderPally 官方規格：檔案 ≤ 2MB、尺寸不限）：
+ *   - 照片 ≤ 2MB → 原檔保留，不做任何更動
+ *   - 照片 >  2MB → 維持原尺寸、逐級降品質壓成 JPG；
+ *                    壓到最低品質仍超標時，每輪縮小 20% 尺寸再壓（等比，不變形）
+ *   - 全部處理完可單張下載或打包 ZIP
  */
 (function () {
   "use strict";
 
+  var MAX_BYTES = 2 * 1024 * 1024; // OrderPally 規格：2MB
+
   var els = {
-    sizePreset: document.getElementById("sizePreset"),
-    fitModeWrap: document.getElementById("fitModeWrap"),
-    customSizeWrap: document.getElementById("customSizeWrap"),
-    customW: document.getElementById("customW"),
-    customH: document.getElementById("customH"),
-    fitMode: document.getElementById("fitMode"),
-    bgWrap: document.getElementById("bgWrap"),
-    bgColor: document.getElementById("bgColor"),
-    maxKB: document.getElementById("maxKB"),
-    format: document.getElementById("format"),
     dropzone: document.getElementById("dropzone"),
     fileInput: document.getElementById("fileInput"),
     resultPanel: document.getElementById("resultPanel"),
@@ -26,43 +22,8 @@
     summary: document.getElementById("summary"),
   };
 
-  var results = []; // { name, blob, ok, error }
+  var results = []; // { name, blob, ok }
   var processing = 0;
-
-  // ---------- 設定 ----------
-  function currentSettings() {
-    var w = 0, h = 0; // 0 = 維持原尺寸（只壓縮檔案）
-    if (els.sizePreset.value === "custom") {
-      w = clampInt(els.customW.value, 50, 8000, 1000);
-      h = clampInt(els.customH.value, 50, 8000, 1000);
-    } else if (els.sizePreset.value !== "original") {
-      w = h = parseInt(els.sizePreset.value, 10);
-    }
-    return {
-      width: w,
-      height: h,
-      fitMode: w ? els.fitMode.value : "fit", // 原尺寸模式下無補邊需求
-      bgColor: els.bgColor.value,
-      maxBytes: parseInt(els.maxKB.value, 10) * 1024, // 0 = 不限制
-      format: els.format.value,
-    };
-  }
-
-  function clampInt(v, min, max, fallback) {
-    var n = parseInt(v, 10);
-    if (isNaN(n)) return fallback;
-    return Math.min(max, Math.max(min, n));
-  }
-
-  function refreshSettingsUI() {
-    var v = els.sizePreset.value;
-    els.customSizeWrap.classList.toggle("hidden", v !== "custom");
-    els.fitModeWrap.classList.toggle("hidden", v === "original");
-    els.bgWrap.classList.toggle("hidden", v === "original" || els.fitMode.value !== "pad");
-  }
-  els.sizePreset.addEventListener("change", refreshSettingsUI);
-  els.fitMode.addEventListener("change", refreshSettingsUI);
-  refreshSettingsUI();
 
   // ---------- 選檔 / 拖放 ----------
   els.dropzone.addEventListener("click", function () { els.fileInput.click(); });
@@ -92,18 +53,27 @@
   // ---------- 主流程 ----------
   function handleFiles(fileList) {
     var files = Array.prototype.slice.call(fileList).filter(function (f) {
-      return /^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name);
+      return /^image\//.test(f.type);
     });
     if (!files.length) return;
 
-    var settings = currentSettings();
     els.resultPanel.classList.remove("hidden");
 
     files.forEach(function (file) {
       var li = addListItem(file.name);
+
+      // 沒超過 2MB：原檔直接保留
+      if (file.size <= MAX_BYTES) {
+        results.push({ name: file.name, blob: file, ok: true });
+        finishItem(li, file, { name: file.name, blob: file, passed: true }, null);
+        updateSummary();
+        return;
+      }
+
+      // 超過 2MB：壓縮
       processing++;
       updateSummary();
-      processOne(file, settings)
+      compressFile(file)
         .then(function (out) {
           results.push({ name: out.name, blob: out.blob, ok: true });
           finishItem(li, file, out, null);
@@ -117,15 +87,20 @@
           updateSummary();
         });
     });
+    updateSummary();
   }
 
-  function processOne(file, s) {
+  function compressFile(file) {
     return loadBitmap(file).then(function (bmp) {
-      var canvas = renderToCanvas(bmp, s);
+      var canvas = makeCanvas(bmp.width, bmp.height);
+      var ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff"; // JPG 沒有透明，透明區補白
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(bmp, 0, 0);
       if (bmp.close) bmp.close();
-      return compressToLimit(canvas, s).then(function (blob) {
-        if (!blob) throw new Error("轉檔失敗（瀏覽器不支援此輸出格式）");
-        return { name: outputName(file.name, s), blob: blob };
+      return compressToLimit(canvas).then(function (blob) {
+        var name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
+        return { name: name, blob: blob, passed: false };
       });
     });
   }
@@ -153,59 +128,8 @@
     });
   }
 
-  /** 等比縮放到目標框內；pad 模式輸出固定尺寸並補底色。大幅縮小時分段減半保畫質。
-   *  s.width=0 表示維持原尺寸（不縮放，只交給後段壓縮）。 */
-  function renderToCanvas(src, s) {
-    var sw = src.width, sh = src.height;
-    var scale = s.width ? Math.min(s.width / sw, s.height / sh, 1) : 1; // 只縮小不放大
-    var dw = Math.max(1, Math.round(sw * scale));
-    var dh = Math.max(1, Math.round(sh * scale));
-
-    // 分段減半縮小（一次縮太多會糊）
-    var cur = src, cw = sw, ch = sh;
-    while (cw / 2 > dw && ch / 2 > dh) {
-      cw = Math.round(cw / 2);
-      ch = Math.round(ch / 2);
-      var step = makeCanvas(cw, ch);
-      var sctx = step.getContext("2d");
-      sctx.imageSmoothingEnabled = true;
-      sctx.imageSmoothingQuality = "high";
-      sctx.drawImage(cur, 0, 0, cw, ch);
-      cur = step;
-    }
-
-    var outW = s.fitMode === "pad" ? s.width : dw;
-    var outH = s.fitMode === "pad" ? s.height : dh;
-    var canvas = makeCanvas(outW, outH);
-    var ctx = canvas.getContext("2d");
-    if (s.fitMode === "pad" || s.format === "image/jpeg") {
-      // JPG 沒有透明，PNG/WebP 的 fit 模式維持透明背景
-      ctx.fillStyle = s.bgColor;
-      ctx.fillRect(0, 0, outW, outH);
-    }
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(cur, Math.round((outW - dw) / 2), Math.round((outH - dh) / 2), dw, dh);
-    return canvas;
-  }
-
-  function makeCanvas(w, h) {
-    var c = document.createElement("canvas");
-    c.width = w;
-    c.height = h;
-    return c;
-  }
-
-  /** 迭代降品質，把檔案壓到 maxBytes 以下（PNG 無品質參數，超標時直接回報）。 */
-  function compressToLimit(canvas, s) {
-    if (s.format === "image/png" || s.maxBytes === 0) {
-      return toBlob(canvas, s.format, 0.92).then(function (blob) {
-        if (blob && s.maxBytes && blob.size > s.maxBytes) {
-          throw new Error("PNG 壓不到大小上限（" + fmtSize(blob.size) + "），請改用 JPG");
-        }
-        return blob;
-      });
-    }
+  /** 品質 0.92 → 0.4 逐級壓；仍超標則每輪縮小 20% 尺寸再壓（等比不變形）。 */
+  function compressToLimit(canvas) {
     var qualities = [0.92, 0.85, 0.78, 0.7, 0.62, 0.55, 0.48, 0.4];
 
     function tryQualities(cnv) {
@@ -213,21 +137,20 @@
       function next(lastBlob) {
         if (i >= qualities.length) return Promise.resolve({ blob: lastBlob, over: true });
         var q = qualities[i++];
-        return toBlob(cnv, s.format, q).then(function (blob) {
-          if (!blob) throw new Error("瀏覽器不支援此輸出格式");
-          if (blob.size <= s.maxBytes) return { blob: blob, over: false };
+        return toBlob(cnv, "image/jpeg", q).then(function (blob) {
+          if (!blob) throw new Error("轉檔失敗（瀏覽器不支援）");
+          if (blob.size <= MAX_BYTES) return { blob: blob, over: false };
           return next(blob);
         });
       }
       return next(null);
     }
 
-    // 保險機制：極大圖壓到最低品質仍超標時，尺寸每次縮 80% 再試（規格尺寸不限，縮尺寸可接受）
     function attempt(cnv, depth) {
       return tryQualities(cnv).then(function (r) {
         if (!r.over) return r.blob;
-        if (depth >= 6 || Math.min(cnv.width, cnv.height) <= 300) {
-          throw new Error("已壓到極限仍超過上限（" + fmtSize(r.blob.size) + "）");
+        if (depth >= 8 || Math.min(cnv.width, cnv.height) <= 300) {
+          throw new Error("已壓到極限仍超過 2MB（" + fmtSize(r.blob.size) + "）");
         }
         var w = Math.round(cnv.width * 0.8);
         var h = Math.round(cnv.height * 0.8);
@@ -242,17 +165,17 @@
     return attempt(canvas, 0);
   }
 
+  function makeCanvas(w, h) {
+    var c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+
   function toBlob(canvas, type, quality) {
     return new Promise(function (resolve) {
       canvas.toBlob(resolve, type, quality);
     });
-  }
-
-  function outputName(original, s) {
-    var base = original.replace(/\.[^.]+$/, "");
-    var ext = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[s.format] || "jpg";
-    var suffix = !s.width ? "compressed" : (s.fitMode === "pad" ? s.width + "x" + s.height : "resized");
-    return base + "_" + suffix + "." + ext;
   }
 
   // ---------- 畫面 ----------
@@ -277,13 +200,13 @@
     var url = URL.createObjectURL(out.blob);
     li.querySelector(".thumb").src = url;
     meta.innerHTML = '<span class="ok"></span>';
-    meta.firstChild.textContent =
-      "✅ " + fmtSize(file.size) + " → " + fmtSize(out.blob.size);
+    meta.firstChild.textContent = out.passed
+      ? "✅ " + fmtSize(file.size) + "，未超過 2MB，原檔保留"
+      : "✅ 已壓縮 " + fmtSize(file.size) + " → " + fmtSize(out.blob.size);
     var a = document.createElement("a");
     a.href = url;
     a.download = out.name;
     a.textContent = "下載";
-    a.className = "dl-link";
     li.querySelector(".dl").appendChild(a);
   }
 
@@ -294,6 +217,11 @@
       (processing > 0 ? "處理中 " + processing + " 張… " : "") +
       "完成 " + ok + " 張" + (fail ? "，失敗 " + fail + " 張" : "");
     els.downloadAll.disabled = processing > 0 || ok === 0;
+  }
+
+  function fmtSize(bytes) {
+    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + " MB";
+    return Math.round(bytes / 1024) + " KB";
   }
 
   // ---------- 批次下載 ----------
