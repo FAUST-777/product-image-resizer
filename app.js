@@ -92,11 +92,23 @@
 
   function compressFile(file) {
     return loadBitmap(file).then(function (bmp) {
-      var canvas = makeCanvas(bmp.width, bmp.height);
+      var w = bmp.width, h = bmp.height;
+      // 瀏覽器 canvas 記憶體上限約 16MP（Safari 限制）；超過先等比縮到安全範圍
+      var MAX_AREA = 16 * 1024 * 1024;
+      if (w * h > MAX_AREA) {
+        var s = Math.sqrt(MAX_AREA / (w * h));
+        w = Math.floor(w * s);
+        h = Math.floor(h * s);
+      }
+      var canvas = makeCanvas(w, h);
       var ctx = canvas.getContext("2d");
+      if (!ctx) {
+        if (bmp.close) bmp.close();
+        throw new Error("瀏覽器記憶體不足，無法處理此圖片（圖片解析度過高）");
+      }
       ctx.fillStyle = "#ffffff"; // JPG 沒有透明，透明區補白
       ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(bmp, 0, 0);
+      ctx.drawImage(bmp, 0, 0, w, h);
       if (bmp.close) bmp.close();
       return compressToLimit(canvas).then(function (blob) {
         var name = file.name.replace(/\.[^.]+$/, "") + ".jpg";
@@ -138,7 +150,7 @@
         if (i >= qualities.length) return Promise.resolve({ blob: lastBlob, over: true });
         var q = qualities[i++];
         return toBlob(cnv, "image/jpeg", q).then(function (blob) {
-          if (!blob) throw new Error("轉檔失敗（瀏覽器不支援）");
+          if (!blob) throw new Error("轉檔失敗（圖片解析度可能過高，或瀏覽器不支援此格式）");
           if (blob.size <= MAX_BYTES) return { blob: blob, over: false };
           return next(blob);
         });
