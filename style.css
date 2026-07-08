@@ -110,3 +110,23 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 li .dl { flex: none; }
 
 footer { margin-top: 24px; text-align: center; }
+.privacy-notice {
+  max-width: 660px;
+  margin: 14px auto 0;
+  padding: 13px 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: left;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+.privacy-notice p { margin: 0; }
+.privacy-notice a { color: var(--muted); }
+.credit {
+  margin-top: 18px;
+  font-size: 12px;
+  color: #d8dce2;
+  letter-spacing: .03em;
+}
